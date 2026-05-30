@@ -23,3 +23,14 @@ streamlit run app.py
 ```
 
 Os arquivos baixados ficam, por padrao, na pasta `downloads`.
+
+## Publicar no Streamlit Community Cloud
+
+1. Acesse https://share.streamlit.io
+2. Entre com sua conta GitHub.
+3. Clique em "New app".
+4. Escolha este repositorio.
+5. Use `app.py` como arquivo principal.
+6. Clique em "Deploy".
+
+O arquivo `packages.txt` instala o FFmpeg no ambiente online.
