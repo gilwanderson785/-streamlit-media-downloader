@@ -97,6 +97,23 @@ def build_options(
         "retries": 3,
         "fragment_retries": 3,
         "socket_timeout": 30,
+        "force_ipv4": True,
+        "http_chunk_size": 10 * 1024 * 1024,
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0.0.0 Safari/537.36"
+            ),
+            "Accept": "*/*",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Sec-Fetch-Mode": "navigate",
+        },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["default", "ios", "android"],
+            }
+        },
     }
 
     if mode == "audio":
@@ -178,6 +195,20 @@ def guess_mime(file_path: Path) -> str:
     return "video/mp4"
 
 
+def friendly_error(exc: Exception) -> str:
+    message = re.sub(r"\x1b\[[0-9;]*m", "", str(exc))
+    message = re.sub(r"\s+", " ", message).strip()
+
+    if "HTTP Error 403" in message or "Forbidden" in message:
+        return (
+            "O site bloqueou o download deste arquivo no servidor online. "
+            "Tente outro link publico, escolha 'Arquivo menor' ou use um conteudo sem restricao. "
+            "Instagram/TikTok/YouTube podem bloquear alguns links em servidores cloud."
+        )
+
+    return message
+
+
 st.set_page_config(
     page_title="Baixador de Midias",
     page_icon="download",
@@ -246,8 +277,7 @@ if download_button:
         )
         downloaded_files = download_media(clean_url, ydl_options)
     except Exception as exc:
-        message = re.sub(r"\s+", " ", str(exc)).strip()
-        st.error(f"Nao foi possivel baixar este conteudo: {message}")
+        st.error(f"Nao foi possivel baixar este conteudo: {friendly_error(exc)}")
         st.stop()
 
     if downloaded_files:
