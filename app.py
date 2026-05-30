@@ -232,11 +232,6 @@ with st.sidebar:
     st.write("Sites aceitos:")
     st.write("YouTube, Instagram e TikTok")
 
-st.info(
-    "Use este app somente para baixar conteudo que voce criou, que e publico com permissao de download "
-    "ou que voce tem autorizacao para salvar. O app nao remove marcas d'agua nem contorna protecoes."
-)
-
 url = st.text_input("Cole o link do video, musica, reel ou post")
 confirm_rights = st.checkbox("Confirmo que tenho direito ou autorizacao para baixar este conteudo.")
 
