@@ -24,16 +24,51 @@ ALLOWED_HOSTS = (
 )
 
 
+def normalize_url(url: str) -> str:
+    value = url.strip()
+    if value and not re.match(r"^https?://", value, flags=re.IGNORECASE):
+        return f"https://{value}"
+    return value
+
+
+def clean_host(url: str) -> str:
+    host = urlparse(normalize_url(url)).netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def detect_platform(url: str) -> str | None:
+    host = clean_host(url)
+    if host == "youtu.be" or host.endswith("youtube.com"):
+        return "YouTube"
+    if host.endswith("instagram.com"):
+        return "Instagram"
+    if host.endswith("tiktok.com") or host == "vm.tiktok.com":
+        return "TikTok"
+    return None
+
+
 def is_supported_url(url: str) -> bool:
-    parsed = urlparse(url.strip())
+    parsed = urlparse(normalize_url(url))
     if parsed.scheme not in {"http", "https"}:
         return False
 
-    host = parsed.netloc.lower()
-    if host.startswith("www."):
-        host = host[4:]
-
+    host = clean_host(url)
     return any(host == allowed or host.endswith(f".{allowed}") for allowed in ALLOWED_HOSTS)
+
+
+def download_suggestion(platform: str, mode: str, quality: str, audio_format: str) -> str:
+    if mode == "audio":
+        return (
+            f"Link do {platform} identificado. Sugestao: baixe como audio em "
+            f"{audio_format.upper()}."
+        )
+
+    if quality == "Rapido ate 720p":
+        return f"Link do {platform} identificado. Sugestao: baixar em video rapido ate 720p."
+
+    return f"Link do {platform} identificado. Sugestao: clique em Baixar para gerar o arquivo."
 
 
 def create_output_dir() -> Path:
@@ -218,6 +253,53 @@ st.set_page_config(
 st.title("Baixador de midias")
 st.caption("YouTube, Instagram e TikTok para conteudo proprio, publico ou autorizado.")
 
+st.markdown(
+    """
+    <style>
+    .media-logo-row {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin: 0.8rem 0 1.2rem;
+    }
+    .media-logo-chip {
+        align-items: center;
+        background: #ffffff;
+        border: 1px solid rgba(49, 51, 63, 0.18);
+        border-radius: 8px;
+        color: #262730;
+        display: inline-flex;
+        font-size: 0.92rem;
+        font-weight: 600;
+        gap: 0.45rem;
+        line-height: 1;
+        padding: 0.48rem 0.64rem;
+    }
+    .media-logo-chip img {
+        display: block;
+        height: 20px;
+        width: 20px;
+    }
+    </style>
+    <div class="media-logo-row" aria-label="Midias aceitas">
+        <span class="media-logo-chip">
+            <img src="https://cdn.simpleicons.org/youtube/FF0000" alt="YouTube">
+            YouTube
+        </span>
+        <span class="media-logo-chip">
+            <img src="https://cdn.simpleicons.org/instagram/E4405F" alt="Instagram">
+            Instagram
+        </span>
+        <span class="media-logo-chip">
+            <img src="https://cdn.simpleicons.org/tiktok/000000" alt="TikTok">
+            TikTok
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 with st.sidebar:
     st.header("Configuracao")
     mode = st.radio("Tipo de download", ["video", "audio"], format_func=str.title)
@@ -233,6 +315,14 @@ with st.sidebar:
     st.write("YouTube, Instagram e TikTok")
 
 url = st.text_input("Cole o link do video, musica, reel ou post")
+
+if url.strip():
+    platform = detect_platform(url)
+    if platform:
+        st.success(download_suggestion(platform, mode, quality, audio_format))
+    else:
+        st.warning("Cole um link do YouTube, Instagram ou TikTok para baixar.")
+
 confirm_rights = st.checkbox("Confirmo que tenho direito ou autorizacao para baixar este conteudo.")
 
 download_button = st.button("Baixar", type="primary", disabled=not url or not confirm_rights)
@@ -250,7 +340,7 @@ if not has_ffmpeg:
         )
 
 if download_button:
-    clean_url = url.strip()
+    clean_url = normalize_url(url)
 
     if not is_supported_url(clean_url):
         st.error("Link nao suportado. Cole uma URL do YouTube, Instagram ou TikTok.")
