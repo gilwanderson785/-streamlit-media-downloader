@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 import shutil
+import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -11,7 +13,8 @@ from yt_dlp import YoutubeDL
 
 
 APP_DIR = Path(__file__).resolve().parent
-DEFAULT_DOWNLOAD_DIR = APP_DIR / "downloads"
+DOWNLOAD_ROOT = Path(tempfile.gettempdir()) / "streamlit_media_downloader"
+MAX_FILESIZE = 250 * 1024 * 1024
 ALLOWED_HOSTS = (
     "youtube.com",
     "youtu.be",
@@ -33,10 +36,8 @@ def is_supported_url(url: str) -> bool:
     return any(host == allowed or host.endswith(f".{allowed}") for allowed in ALLOWED_HOSTS)
 
 
-def sanitize_output_dir(raw_path: str) -> Path:
-    path = Path(raw_path).expanduser()
-    if not path.is_absolute():
-        path = APP_DIR / path
+def create_output_dir() -> Path:
+    path = DOWNLOAD_ROOT / str(uuid.uuid4())
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -85,13 +86,17 @@ def build_options(
 
     common_options: dict[str, Any] = {
         "outtmpl": str(output_dir / "%(extractor)s" / "%(title).180s [%(id)s].%(ext)s"),
-        "noplaylist": False,
+        "noplaylist": True,
         "progress_hooks": [progress_hook],
         "windowsfilenames": True,
         "restrictfilenames": False,
         "ignoreerrors": False,
         "quiet": True,
         "no_warnings": True,
+        "max_filesize": MAX_FILESIZE,
+        "retries": 3,
+        "fragment_retries": 3,
+        "socket_timeout": 30,
     }
 
     if mode == "audio":
@@ -112,15 +117,21 @@ def build_options(
         )
         return common_options
 
+    if quality == "Rapido ate 720p":
+        common_options["format"] = "best[height<=720][ext=mp4]/best[ext=mp4]/best[height<=720]/best"
+        return common_options
+
+    if quality == "Arquivo menor":
+        common_options["format"] = "worst[ext=mp4]/worst"
+        return common_options
+
     if not has_ffmpeg:
-        common_options["format"] = "best[ext=mp4]/best"
+        common_options["format"] = "best[height<=720][ext=mp4]/best[ext=mp4]/best[height<=720]/best"
         return common_options
 
     quality_map = {
         "Melhor qualidade": "bestvideo+bestaudio/best",
         "Ate 1080p": "bv*[height<=1080]+ba/b[height<=1080]/best",
-        "Ate 720p": "bv*[height<=720]+ba/b[height<=720]/best",
-        "Arquivo menor": "worstvideo+bestaudio/worst",
     }
     common_options["format"] = quality_map[quality]
     common_options["merge_output_format"] = "mp4"
@@ -149,6 +160,24 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def read_download(file_path: Path) -> bytes:
+    with file_path.open("rb") as file_handle:
+        return file_handle.read()
+
+
+def guess_mime(file_path: Path) -> str:
+    suffix = file_path.suffix.lower()
+    if suffix == ".mp3":
+        return "audio/mpeg"
+    if suffix in {".m4a", ".aac"}:
+        return "audio/mp4"
+    if suffix == ".wav":
+        return "audio/wav"
+    if suffix == ".webm":
+        return "video/webm"
+    return "video/mp4"
+
+
 st.set_page_config(
     page_title="Baixador de Midias",
     page_icon="download",
@@ -163,11 +192,10 @@ with st.sidebar:
     mode = st.radio("Tipo de download", ["video", "audio"], format_func=str.title)
     quality = st.selectbox(
         "Qualidade do video",
-        ["Melhor qualidade", "Ate 1080p", "Ate 720p", "Arquivo menor"],
+        ["Rapido ate 720p", "Ate 1080p", "Melhor qualidade", "Arquivo menor"],
         disabled=mode == "audio",
     )
     audio_format = st.selectbox("Formato do audio", ["mp3", "m4a", "wav"], disabled=mode != "audio")
-    output_dir_text = st.text_input("Pasta de saida", str(DEFAULT_DOWNLOAD_DIR))
 
     st.divider()
     st.write("Sites aceitos:")
@@ -192,7 +220,7 @@ if not has_ffmpeg:
         )
     else:
         st.warning(
-            "FFmpeg nao foi encontrado. O app vai baixar video em arquivo unico, que pode ter qualidade menor."
+            "FFmpeg nao foi encontrado. Use a qualidade rapida ou arquivo menor para baixar video em arquivo unico."
         )
 
 if download_button:
@@ -202,7 +230,7 @@ if download_button:
         st.error("Link nao suportado. Cole uma URL do YouTube, Instagram ou TikTok.")
         st.stop()
 
-    output_dir = sanitize_output_dir(output_dir_text)
+    output_dir = create_output_dir()
     status_box = st.empty()
     progress_bar = st.progress(0)
 
@@ -222,21 +250,22 @@ if download_button:
         st.error(f"Nao foi possivel baixar este conteudo: {message}")
         st.stop()
 
-    st.success(f"Arquivos salvos em: {output_dir}")
-
     if downloaded_files:
-        st.subheader("Arquivos gerados")
-        for file_path in downloaded_files[:10]:
-            st.write(str(file_path))
+        st.success("Arquivo pronto para baixar.")
+        for file_path in downloaded_files[:3]:
             try:
-                with file_path.open("rb") as file_handle:
-                    st.download_button(
-                        "Salvar uma copia",
-                        data=file_handle,
-                        file_name=file_path.name,
-                        key=str(file_path),
-                    )
+                file_bytes = read_download(file_path)
             except OSError:
-                st.write("Arquivo salvo no disco, mas nao foi possivel abrir para botao de copia.")
+                st.error("O arquivo foi baixado, mas nao foi possivel prepara-lo para entrega.")
+                continue
+
+            st.download_button(
+                "Baixar arquivo",
+                data=file_bytes,
+                file_name=file_path.name,
+                mime=guess_mime(file_path),
+                key=str(file_path),
+                on_click="ignore",
+            )
     else:
-        st.write("O download terminou, mas nao consegui listar o arquivo final automaticamente.")
+        st.error("O download terminou, mas nao consegui preparar o arquivo final para entrega.")
