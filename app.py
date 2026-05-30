@@ -299,3 +299,9 @@ if download_button:
             )
     else:
         st.error("O download terminou, mas nao consegui preparar o arquivo final para entrega.")
+
+st.divider()
+st.caption(
+    "Desenvolvido por Gil Wanderson - "
+    "[Instagram](https://www.instagram.com/giloliveira147/)"
+)
